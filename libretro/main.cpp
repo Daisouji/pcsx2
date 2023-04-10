@@ -456,9 +456,12 @@ static bool set_hw_render(retro_hw_context_type type)
 	switch (type)
 	{
 #ifdef _WIN32
-		case RETRO_HW_CONTEXT_DIRECT3D:
-			if(!hw_render.version_major)
-				hw_render.version_major = 11;
+		case RETRO_HW_CONTEXT_D3D11:
+			hw_render.version_major = 11;
+			hw_render.version_minor = 0;
+			break;
+		case RETRO_HW_CONTEXT_D3D12:
+			hw_render.version_major = 12;
 			hw_render.version_minor = 0;
 			break;
 #endif
@@ -506,12 +509,12 @@ bool select_hw_render()
 	if (Options::renderer == "D3D11")
 	{
 		hw_render.version_major = 11;
-		return set_hw_render(RETRO_HW_CONTEXT_DIRECT3D);
+		return set_hw_render(RETRO_HW_CONTEXT_D3D11);
 	}
 	if (Options::renderer == "D3D12")
 	{
 		hw_render.version_major = 12;
-		return set_hw_render(RETRO_HW_CONTEXT_DIRECT3D);
+		return set_hw_render(RETRO_HW_CONTEXT_D3D12);
 	}
 #endif
 #ifdef ENABLE_VULKAN
@@ -528,7 +531,9 @@ bool select_hw_render()
 	if (set_hw_render(RETRO_HW_CONTEXT_OPENGLES3))
 		return true;
 #ifdef _WIN32
-	if (set_hw_render(RETRO_HW_CONTEXT_DIRECT3D))
+	if (set_hw_render(RETRO_HW_CONTEXT_D3D11))
+		return true;
+	if (set_hw_render(RETRO_HW_CONTEXT_D3D12))
 		return true;
 #endif
 
@@ -667,11 +672,11 @@ bool retro_load_game(const struct retro_game_info* game)
 
 	switch (hw_render.context_type)
 	{
-		case RETRO_HW_CONTEXT_DIRECT3D:
-			if(hw_render.version_major == 12)
-				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX12);
-			else
-				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX11);
+		case RETRO_HW_CONTEXT_D3D12:
+			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX12);
+			break;
+		case RETRO_HW_CONTEXT_D3D11:
+			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX11);
 			break;
 #ifdef ENABLE_VULKAN
 		case RETRO_HW_CONTEXT_VULKAN:
