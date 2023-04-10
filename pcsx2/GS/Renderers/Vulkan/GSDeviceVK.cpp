@@ -492,6 +492,16 @@ float GSDeviceVK::GetAndResetAccumulatedGPUTime()
 	return g_vulkan_context->GetAndResetAccumulatedGPUTime();
 }
 
+void GSDeviceVK::ResetAPIState()
+{
+	EndRenderPass();
+}
+
+void GSDeviceVK::RestoreAPIState()
+{
+	InvalidateCachedState();
+}
+
 #ifdef ENABLE_OGL_DEBUG
 static std::array<float, 3> Palette(float phase, const std::array<float, 3>& a, const std::array<float, 3>& b,
 	const std::array<float, 3>& c, const std::array<float, 3>& d)

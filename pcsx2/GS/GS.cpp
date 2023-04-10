@@ -82,7 +82,7 @@ int GSinit()
 
 	GSUtil::Init();
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__LIBRETRO__)
 	s_hr = ::CoInitializeEx(NULL, COINIT_MULTITHREADED);
 #endif
 
@@ -93,7 +93,7 @@ void GSshutdown()
 {
 	GSclose();
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(__LIBRETRO__)
 	if (SUCCEEDED(s_hr))
 	{
 		::CoUninitialize();
@@ -812,6 +812,7 @@ void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config)
 
 
 	// Handle OSD scale changes by pushing a window resize through.
+#ifndef __LIBRETRO__
 	if (new_config.OsdScale != old_config.OsdScale)
 		ImGuiManager::WindowResized();
 
@@ -822,7 +823,7 @@ void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config)
 			pxFailRel("Failed to do full GS reopen");
 		return;
 	}
-
+#endif
 	// Options which aren't using the global struct yet, so we need to recreate all GS objects.
 	if (
 		GSConfig.SWExtraThreads != old_config.SWExtraThreads ||
