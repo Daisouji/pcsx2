@@ -64,6 +64,10 @@ static HRESULT s_hr = E_FAIL;
 
 #endif
 
+#ifdef __LIBRETRO__
+#include "Renderers/Null/GSDeviceNull.h"
+#endif
+
 #include <fstream>
 
 // do NOT undefine this/put it above includes, as x11 people love to redefine
@@ -108,6 +112,22 @@ void GSshutdown()
 
 static RenderAPI GetAPIForRenderer(GSRendererType renderer)
 {
+#ifdef __LIBRETRO__
+	switch(hw_render.context_type)
+	{
+	case RETRO_HW_CONTEXT_D3D11:
+		return RenderAPI::D3D11;
+	case RETRO_HW_CONTEXT_D3D12:
+		return RenderAPI::D3D12;
+	case RETRO_HW_CONTEXT_VULKAN:
+		return RenderAPI::Vulkan;
+	case RETRO_HW_CONTEXT_NONE:
+		return RenderAPI::None;
+	default:
+		break;
+	}
+	return RenderAPI::OpenGL;
+#else
 	switch (renderer)
 	{
 		case GSRendererType::OGL:
@@ -132,6 +152,7 @@ static RenderAPI GetAPIForRenderer(GSRendererType renderer)
 		default:
 			return GetAPIForRenderer(GSUtil::GetPreferredRenderer());
 	}
+#endif
 }
 
 static void UpdateExclusiveFullscreen(bool force_off)
@@ -209,7 +230,11 @@ static bool OpenGSDevice(GSRendererType renderer, bool clear_state_on_fail)
 			g_gs_device = std::make_unique<GSDeviceVK>();
 			break;
 #endif
-
+#ifdef __LIBRETRO__
+		case RenderAPI::None:
+			g_gs_device = std::make_unique<GSDeviceNull>();
+		break;
+#endif
 		default:
 			Console.Error("Unsupported render API %s", GSDevice::RenderAPIToString(s_render_api));
 			return false;

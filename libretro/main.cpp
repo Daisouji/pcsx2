@@ -368,12 +368,12 @@ void retro_get_system_av_info(retro_system_av_info* info)
 	if (Options::renderer == "Software" || Options::renderer == "Null")
 	{
 		info->geometry.base_width = 640;
-		info->geometry.base_height = 480;
+		info->geometry.base_height = 448;
 	}
 	else
 	{
 		info->geometry.base_width = 640 * Options::upscale_multiplier;
-		info->geometry.base_height = 480 * Options::upscale_multiplier;
+		info->geometry.base_height = 448 * Options::upscale_multiplier;
 	}
 
 	info->geometry.max_width = info->geometry.base_width;
@@ -498,11 +498,11 @@ static bool set_hw_render(retro_hw_context_type type)
 
 bool select_hw_render()
 {
-	if (Options::renderer == "Auto")
+	if (Options::renderer == "Auto" || Options::renderer == "Software")
 	{
-		retro_hw_context_type context_type = RETRO_HW_CONTEXT_OPENGL_CORE;
+		retro_hw_context_type context_type = RETRO_HW_CONTEXT_NONE;
 		environ_cb(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &context_type);
-		if (set_hw_render(context_type))
+		if (context_type != RETRO_HW_CONTEXT_NONE && set_hw_render(context_type))
 			return true;
 	}
 #ifdef _WIN32
@@ -536,6 +536,8 @@ bool select_hw_render()
 	if (set_hw_render(RETRO_HW_CONTEXT_D3D12))
 		return true;
 #endif
+	if (Options::renderer == "Software")
+		return set_hw_render(RETRO_HW_CONTEXT_NONE);
 
 	return false;
 }
@@ -627,6 +629,9 @@ static const VkApplicationInfo *get_application_info_vulkan(void) {
 #endif
 bool retro_load_game(const struct retro_game_info* game)
 {
+	int format = RETRO_PIXEL_FORMAT_XRGB8888;
+	environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &format);
+
 	const char* system_base = nullptr;
 	environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &system_base);
 	std::string system = Path::Combine(system_base, "pcsx2");
@@ -670,41 +675,41 @@ bool retro_load_game(const struct retro_game_info* game)
 	if(!select_hw_render())
 		return false;
 
-	switch (hw_render.context_type)
-	{
-		case RETRO_HW_CONTEXT_D3D12:
-			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX12);
-			break;
-		case RETRO_HW_CONTEXT_D3D11:
-			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX11);
-			break;
+	if(Options::renderer == "Software")
+		s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::SW);
+	else
+		switch (hw_render.context_type)
+		{
+			case RETRO_HW_CONTEXT_D3D12:
+				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX12);
+				break;
+			case RETRO_HW_CONTEXT_D3D11:
+				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::DX11);
+				break;
 #ifdef ENABLE_VULKAN
-		case RETRO_HW_CONTEXT_VULKAN:
-			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::VK);
-			{
-				static const struct retro_hw_render_context_negotiation_interface_vulkan iface = {
-					RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
-					RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION,
-					get_application_info_vulkan,
-					create_device_vulkan,  // Callback above.
-					nullptr,
-				};
-				environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, (void *)&iface);
-			}
-			Vulkan::LoadVulkanLibrary();
-			vk_libretro_init_wraps();
-			break;
+			case RETRO_HW_CONTEXT_VULKAN:
+				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::VK);
+				{
+					static const struct retro_hw_render_context_negotiation_interface_vulkan iface = {
+						RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN,
+						RETRO_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_VULKAN_VERSION,
+						get_application_info_vulkan,
+						create_device_vulkan,  // Callback above.
+						nullptr,
+					};
+					environ_cb(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE, (void *)&iface);
+				}
+				Vulkan::LoadVulkanLibrary();
+				vk_libretro_init_wraps();
+				break;
 #endif
-		case RETRO_HW_CONTEXT_NONE:
-			s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::Null);
-			break;
-		default:
-			if(Options::renderer == "Software")
-				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::SW);
-			else
+			case RETRO_HW_CONTEXT_NONE:
+				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::Null);
+				break;
+			default:
 				s_settings_interface.SetIntValue("EmuCore/GS", "Renderer", (int)GSRendererType::OGL);
-			break;
-	}
+				break;
+		}
 
 	VMManager::ApplySettings();
 
@@ -719,6 +724,9 @@ bool retro_load_game(const struct retro_game_info* game)
 
 	cpu_thread = std::thread(cpu_thread_entry, boot_params);
 
+	if(hw_render.context_type == RETRO_HW_CONTEXT_NONE)
+		GetMTGS().TryOpenGS();
+
 	return true;
 }
 
@@ -730,6 +738,12 @@ bool retro_load_game_special(unsigned game_type, const struct retro_game_info* i
 
 void retro_unload_game(void)
 {
+	if(GetMTGS().IsOpen())
+	{
+		cpu_thread_pause();
+		GetMTGS().CloseGS();
+	}
+
 	VMManager::Shutdown(false);
 	cpu_thread.join();
 #ifdef ENABLE_VULKAN
@@ -804,6 +818,9 @@ void retro_run(void)
 
 	read_pos += samples;
 	read_pos &= SOUND_BUFFER_MASK;
+
+	if (EmuConfig.GS.Renderer == GSRendererType::Null)
+		video_cb(NULL, 0, 0, 0);
 }
 
 void Host::BeginPresentFrame()
@@ -843,7 +860,7 @@ std::optional<WindowInfo> Host::AcquireRenderWindow(RenderAPI api)
 {
 	WindowInfo wi;
 	wi.surface_width = 640 * Options::upscale_multiplier;
-	wi.surface_height = 480 * Options::upscale_multiplier;
+	wi.surface_height = 448 * Options::upscale_multiplier;
 	wi.surface_scale = 1.0f;
 	wi.type = WindowInfo::Type::Libretro;
 	if(api == RenderAPI::Vulkan)
@@ -856,7 +873,7 @@ std::optional<WindowInfo> Host::UpdateRenderWindow()
 {
 	WindowInfo wi;
 	wi.surface_width = 640 * Options::upscale_multiplier;
-	wi.surface_height = 480 * Options::upscale_multiplier;
+	wi.surface_height = 448 * Options::upscale_multiplier;
 	wi.surface_scale = 1.0f;
 	wi.type = WindowInfo::Type::Libretro;
 	if(hw_render.context_type == RETRO_HW_CONTEXT_VULKAN)
@@ -1217,7 +1234,7 @@ std::optional<WindowInfo> Host::GetTopLevelWindowInfo()
 {
 	WindowInfo wi;
 	wi.surface_width = 640;
-	wi.surface_height = 480;
+	wi.surface_height = 448;
 	wi.surface_scale = 1.0f;
 	wi.type = WindowInfo::Type::Libretro;
 

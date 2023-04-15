@@ -1074,6 +1074,9 @@ if(LIBRETRO)
 		SPU2/Linux/Alsa.cpp
 		SPU2/Linux/Dialogs.cpp
 	)
+   LIST(APPEND pcsx2GSSources
+      GS/Renderers/Null/GSDeviceNull.cpp
+   )
 endif()
 
 # These ones benefit a lot from LTO
